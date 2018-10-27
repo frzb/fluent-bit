@@ -48,9 +48,10 @@ option(FLB_INOTIFY            "Enable inotify support"       Yes)
 option(FLB_SQLDB              "Enable SQL embedded DB"        No)
 option(FLB_HTTP_SERVER        "Enable HTTP Server"            No)
 option(FLB_BACKTRACE          "Enable stacktrace support"    Yes)
-option(FLB_LUAJIT             "Enable Lua Scripting support" Yes)
+option(FLB_LUAJIT             "Enable Lua Scripting support"  No)
 option(FLB_STATIC_CONF        "Build binary using static configuration")
 option(FLB_CORO_STACK_SIZE    "Set coroutine stack size")
+
 
 # Metrics: Experimental Feature, disabled by default on 0.12 series
 # but enabled in the upcoming 0.13 release. Note that development
@@ -126,6 +127,7 @@ option(FLB_FILTER_THROTTLE "Enable throttle filter"             Yes)
 option(FLB_FILTER_RECORD_MODIFIER "Enable record_modifier filter" Yes)
 option(FLB_FILTER_NEST     "Enable nest filter"                   Yes)
 option(FLB_FILTER_LUA      "Enable Lua scripting filter"          Yes)
+option(FLB_FILTER_CSV      "Enable csv filter"          Yes)
 
 # Enable all features
 if(FLB_ALL)
