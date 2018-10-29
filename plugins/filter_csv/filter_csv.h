@@ -1,8 +1,6 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 
 /*  Fluent Bit
- *  ==========
- *  Copyright (C) 2015-2018 Treasure Data Inc.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,9 +15,8 @@
  *  limitations under the License.
  */
 
-#ifndef FLB_CSV_H
-#define FLB_CSV_H
-
+#ifndef FLB_FILTER_CSV_H
+#define FLB_FILTER_CSV_H
 
 
 struct filter_csv_ctx {
@@ -40,4 +37,4 @@ struct filter_csv_ctx {
     int  has_empty_values;
 };
 
-#endif /* FLB_MARIADB_AUDIT_H */
+#endif /* FLB_FILTER_CSV_H */
