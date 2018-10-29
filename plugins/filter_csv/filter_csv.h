@@ -32,7 +32,10 @@ struct filter_csv_ctx {
     
     int  escape;
     int  quote;
-    int  separator;
+    int  delimiter;
+    int  doubleQuote;
+    int  skipInitialSpace;
+    
     int  delete_original;
     int  has_empty_values;
 };

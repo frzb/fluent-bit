@@ -115,7 +115,7 @@ static int parse_boolean(char *str, int def) {
 #define ST_QUOTE_END     5
 #define ST_ERROR         6
 
-static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int length, int field_count, int sep, int quote, int escape) {
+static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int length, int field_count, int sep, int quote, int escape, int skipSpace) {
 
     int index;
     int  state;
@@ -157,7 +157,9 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                 a = b;
             } else if(escape && ch == escape) {
                 state = ST_ESCAPE;
-                prev  = ST_NORMAL;                
+                prev  = ST_NORMAL;
+            } else if(skipSpace && ch == ' ') {
+                state = ST_START;
             } else {
                 *b++ = ch;
                 state = ST_NORMAL;
@@ -169,7 +171,8 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                 out[index].size = b - a;                
                 *b++ = 0;
                 index++;
-                a = b;                
+                a = b;
+                state = ST_START;
             } else if(escape && ch == escape) {
                 state = ST_ESCAPE;
                 prev  = ST_NORMAL;
@@ -246,18 +249,24 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
 }
 
 
+// https://frictionlessdata.io/specs/csv-dialect/
+
 static int csv_configure(struct filter_csv_ctx *ctx,
                          struct flb_filter_instance *f_ins,
                          struct flb_config *config)
 {
     char *tmp;
     ctx->message_field = "message";
-    ctx->separator    = ',';
-    ctx->quote        = '\'';
+    ctx->delimiter    = ',';
+    ctx->quote        = '\"';
     ctx->escape       = 1;
+    ctx->doubleQuote  = 0;
+    ctx->skipInitialSpace = 0;
+    
     ctx->delete_original = 1;
     ctx->has_empty_values = 0;
     ctx->field_count = 0;
+
     
     /* message field  (default: "message") */
     tmp = flb_filter_get_property("message_field", f_ins);
@@ -309,9 +318,9 @@ static int csv_configure(struct filter_csv_ctx *ctx,
         }
         flb_free(values);        
     }
-    tmp = flb_filter_get_property("separator", f_ins);
+    tmp = flb_filter_get_property("delimiter", f_ins);
     if (tmp) {
-        ctx->separator = parse_char(tmp,',');
+        ctx->delimiter = parse_char(tmp,',');
     }
     tmp = flb_filter_get_property("escape", f_ins);
     if (tmp) {
@@ -321,11 +330,16 @@ static int csv_configure(struct filter_csv_ctx *ctx,
     if (tmp) {
         ctx->quote = parse_char(tmp,'\'');
     }
-    tmp = flb_filter_get_property("quote", f_ins);
-    if (tmp) {
-        ctx->quote = parse_char(tmp,'\'');
-    }
     
+    tmp = flb_filter_get_property("doubleQuote", f_ins);
+    if (tmp) {
+        ctx->doubleQuote = parse_boolean(tmp, ctx->doubleQuote);
+    }
+
+    tmp = flb_filter_get_property("skip_initial_space", f_ins);
+    if(tmp) {
+        ctx->skipInitialSpace = parse_boolean(tmp, 0);
+    }
     
     tmp = flb_filter_get_property("delete_original", f_ins);
     if (tmp) {
@@ -336,6 +350,7 @@ static int csv_configure(struct filter_csv_ctx *ctx,
     if(tmp) {
         ctx->has_empty_values = parse_boolean(tmp, 0);
     }
+
 
     if(ctx->field_count <= 0) {
         flb_error("[filter_csv] no fields defined");
@@ -463,12 +478,9 @@ static int cb_csv_filter(void *data, size_t bytes,
 
         changed++;
 
-
-
-
         buf = NULL;
         
-        parsed_values = parse_csv_values(val_object->via.str.ptr, &buf, val_object->via.str.size, ctx->field_count, ctx->separator, ctx->quote, ctx->escape);
+        parsed_values = parse_csv_values(val_object->via.str.ptr, &buf, val_object->via.str.size, ctx->field_count, ctx->delimiter, ctx->quote, ctx->escape, ctx->skipInitialSpace);
 
         if(!parsed_values) {
             flb_error("[filter_csv] parsing error");
