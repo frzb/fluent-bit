@@ -80,6 +80,10 @@ static int parse_char(char *str, int def) {
             return '/';
         } else if(!strcasecmp(str,"equal")) {
             return '=';
+        } else if(!strcasecmp(str,"space")) {
+            return ' ';
+        } else if(!strcasecmp(str,"tab")) {
+            return '\t';
         } else if(!strcasecmp(str,"backslash")) {
             return '\\';
         } else {
@@ -180,6 +184,8 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
             } else if(escape && ch == escape) {
                 state = ST_QUOTE_ESCAPE;
                 prev = ST_QUOTE;
+            } else {
+                *b++ = ch;
             }
             break;
             
@@ -221,6 +227,7 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
             if(ch == sep) {
                 out[index].ptr  = a;
                 out[index].size = b - a;
+                index++;
                 *b++ = 0;
                 a = b;
                 state = ST_START;
@@ -230,7 +237,7 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
             abort();
         }
     }
-    out[index].size = a;
+    out[index].ptr  = a;
     out[index].size = b - a;
     index++;
     out[index].ptr  = NULL;
@@ -444,7 +451,7 @@ static int cb_csv_filter(void *data, size_t bytes,
         
         flb_time_append_to_msgpack(&tm, &tmp_pck, 0);
 
-        flb_warn("[filter_csv] here we go (%d)", cnt);
+        flb_debug("[filter_csv] here we go (%d)", cnt);
         
         val_key_index = -1;
         val_object = get_key_value(obj, ctx->message_field, &val_key_index);
@@ -503,7 +510,7 @@ static int cb_csv_filter(void *data, size_t bytes,
                 msgpack_pack_str(&tmp_pck, ctx->lengths[i]);
                 msgpack_pack_str_body(&tmp_pck,ctx->fields[i], ctx->lengths[i]);
                 msgpack_pack_str(&tmp_pck, parsed_values[i].size);
-                msgpack_pack_str_body(&tmp_pck,parsed_values[i].ptr, parsed_values[i].size);
+                msgpack_pack_str_body(&tmp_pck,parsed_values[i].ptr ? parsed_values[i].ptr : "", parsed_values[i].size);
             }
         }
         
