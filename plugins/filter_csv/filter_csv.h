@@ -30,11 +30,12 @@ struct filter_csv_ctx {
     int  escape;
     int  quote;
     int  delimiter;
-    int  doubleQuote;
-    int  skipInitialSpace;
+    int  double_quote;
+    int  skip_initial_space;
     
     int  delete_original;
     int  has_empty_values;
+    unsigned char charmap[256];
 };
 
 #endif /* FLB_FILTER_CSV_H */
