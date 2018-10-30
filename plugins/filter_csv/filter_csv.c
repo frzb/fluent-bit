@@ -481,9 +481,10 @@ static msgpack_object *get_key_value(msgpack_object *map, char *keyValue, int *i
     int mapSize = map->via.map.size;
     char *key_str;
     int   key_len;
+    int   i;
     
     kv = map->via.map.ptr;
-    for(int i=0; i< mapSize; i++) {
+    for(i=0; i< mapSize; i++) {
         int ret = msgpackobj2char(&(kv[i].key), &key_str, &key_len);
         if(ret == 0 && key_len == keyLen && !strncasecmp(key_str, keyValue, keyLen)) {
             if(index) {
