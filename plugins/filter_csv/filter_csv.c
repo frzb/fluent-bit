@@ -67,7 +67,7 @@ static int parse_char(char *str, int def) {
         } else if(!strcasecmp(str,"semicolon")) {
             return ';';
         } else if(!strcasecmp(str,"colon")) {
-            return ';';
+            return ':';
         } else if(!strcasecmp(str,"hyphen")) {
             return '-';
         } else if(!strcasecmp(str,"period")) {
@@ -104,150 +104,10 @@ static int parse_boolean(char *str, int def) {
     }
 }
 
-
-#define ST_START         0
-#define ST_NORMAL        1
-#define ST_ESCAPE        2
-#define ST_QUOTE         3
-#define ST_QUOTE_ESCAPE  4
-#define ST_QUOTE_END     5
-#define ST_ERROR         6
-
-static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int length, int field_count, int sep, int quote, int escape, int skipSpace) {
-
-    int index;
-    int  state;
-    int  prev;
-    msgpack_object_str *out;
-    char *buf;
-    char *a;    
-    char *b;
-    unsigned char *s = (unsigned char*) str;
-    unsigned char *ep = s + length;
-    
-    if((out = flb_calloc(sizeof(msgpack_object_str), field_count + 2)) == NULL) {
-        flb_errno();
-        return NULL;
-    }
-    if((buf = flb_calloc(sizeof(char), length + 2)) == NULL) {
-        flb_free(out);
-        flb_errno();
-        return NULL;
-    }
-    *bufptr = buf;
-    b = buf;
-
-    index = 0;
-    state = ST_START;
-    a = b;
-    while(s < ep) {
-        int ch = *s++;
-        switch(state) {
-        case ST_START:
-            if(ch == sep && index < field_count) {
-                out[index].ptr = a;                
-                out[index].size = b - a;
-                *b++ = 0;
-                a = b;
-                index++;
-            } else if(quote && ch == quote) {
-                state = ST_QUOTE;
-                a = b;
-            } else if(escape && ch == escape) {
-                state = ST_ESCAPE;
-                prev  = ST_NORMAL;
-            } else if(skipSpace && ch == ' ') {
-                state = ST_START;
-            } else {
-                *b++ = ch;
-                state = ST_NORMAL;
-            }
-            break;
-        case ST_NORMAL:
-            if(ch == sep && index < field_count) {
-                out[index].ptr  = a;
-                out[index].size = b - a;                
-                *b++ = 0;
-                index++;
-                a = b;
-                state = ST_START;
-            } else if(escape && ch == escape) {
-                state = ST_ESCAPE;
-                prev  = ST_NORMAL;
-            } else {
-                *b++ = ch;
-                state = ST_NORMAL;
-            }
-            break;
-        case ST_QUOTE:
-            if(ch == quote) {
-                state = ST_QUOTE_END;
-            } else if(escape && ch == escape) {
-                state = ST_QUOTE_ESCAPE;
-                prev = ST_QUOTE;
-            } else {
-                *b++ = ch;
-            }
-            break;
-            
-        case ST_ESCAPE:
-        case ST_QUOTE_ESCAPE:            
-            switch(ch) {
-            case '\'':
-                *b++ = '\'';
-                break;
-            case '\"':
-                *b++ = '\"';
-                break;
-            case '\\':
-                *b++ = '\\';
-                break;
-            case 'n':
-                *b++ = '\n';
-                break;
-            case 'r':
-                *b++ = '\r';
-                break;
-            case 'v':
-                *b++ = '\v';
-                break;
-            case 'f':
-                *b++ = '\f';
-                break;
-            case 't':
-                *b++ = '\t';
-                break;
-            default:
-                *b++ = '\\';
-                *b++ = ch;
-                break;
-            }
-            state = prev;
-            break;
-        case ST_QUOTE_END:
-            if(ch == sep) {
-                out[index].ptr  = a;
-                out[index].size = b - a;
-                index++;
-                *b++ = 0;
-                a = b;
-                state = ST_START;
-            }
-            break;
-        default:
-            abort();
-        }
-    }
-    out[index].ptr  = a;
-    out[index].size = b - a;
-    index++;
-    out[index].ptr  = NULL;
-    out[index].size = 0;
-    return out;
-}
-
-
-// https://frictionlessdata.io/specs/csv-dialect/
+#define MARK_DELIMITER   1
+#define MARK_ESCAPE      2
+#define MARK_QUOTE       3
+#define MARK_SPACE       4
 
 static int csv_configure(struct filter_csv_ctx *ctx,
                          struct flb_filter_instance *f_ins,
@@ -258,13 +118,14 @@ static int csv_configure(struct filter_csv_ctx *ctx,
     ctx->delimiter    = ',';
     ctx->quote        = '\"';
     ctx->escape       = 1;
-    ctx->doubleQuote  = 0;
-    ctx->skipInitialSpace = 0;
+    ctx->double_quote  = 0;
+    ctx->skip_initial_space = 1;
     
     ctx->delete_original = 1;
     ctx->has_empty_values = 0;
     ctx->field_count = 0;
 
+    memset(ctx->charmap, 0, 256);
     
     /* message field  (default: "message") */
     tmp = flb_filter_get_property("message_field", f_ins);
@@ -318,35 +179,35 @@ static int csv_configure(struct filter_csv_ctx *ctx,
     }
     tmp = flb_filter_get_property("delimiter", f_ins);
     if (tmp) {
-        ctx->delimiter = parse_char(tmp,',');
+        ctx->delimiter = parse_char(tmp,ctx->delimiter);
     }
     tmp = flb_filter_get_property("escape", f_ins);
     if (tmp) {
-        ctx->escape = parse_char(tmp,'\\');
+        ctx->escape = parse_char(tmp,ctx->escape);
     }
     tmp = flb_filter_get_property("quote", f_ins);
     if (tmp) {
-        ctx->quote = parse_char(tmp,'\'');
+        ctx->quote = parse_char(tmp,ctx->quote);
     }
     
-    tmp = flb_filter_get_property("doubleQuote", f_ins);
+    tmp = flb_filter_get_property("double_quote", f_ins);
     if (tmp) {
-        ctx->doubleQuote = parse_boolean(tmp, ctx->doubleQuote);
+        ctx->double_quote = parse_boolean(tmp, ctx->double_quote);
     }
 
     tmp = flb_filter_get_property("skip_initial_space", f_ins);
     if(tmp) {
-        ctx->skipInitialSpace = parse_boolean(tmp, 0);
+        ctx->skip_initial_space = parse_boolean(tmp, ctx->skip_initial_space);
     }
     
     tmp = flb_filter_get_property("delete_original", f_ins);
     if (tmp) {
-        ctx->delete_original = parse_boolean(tmp, 1);
+        ctx->delete_original = parse_boolean(tmp, ctx->delete_original);
     }
 
     tmp = flb_filter_get_property("has_empty_values", f_ins);
     if(tmp) {
-        ctx->has_empty_values = parse_boolean(tmp, 0);
+        ctx->has_empty_values = parse_boolean(tmp, ctx->has_empty_values);
     }
 
 
@@ -355,10 +216,234 @@ static int csv_configure(struct filter_csv_ctx *ctx,
         return -1;
     }
 
+    if(ctx->delimiter == 0) {
+        flb_error("[filter_csv] no delimiter defined");
+        return -1;
+    }
+
     ctx->message_field_length = strlen(ctx->message_field);
 
+    if(ctx->quote) {
+        ctx->charmap[ctx->quote] = MARK_QUOTE;
+    }
+    if(ctx->escape) {
+        ctx->charmap[ctx->escape] = MARK_ESCAPE;
+    }
+    if(ctx->delimiter) {
+        ctx->charmap[ctx->delimiter] = MARK_DELIMITER;
+    }
+    
+    if(ctx->skip_initial_space) {
+        ctx->charmap[' '] = MARK_SPACE;
+    }
     return 0;
 }
+
+
+#define ST_START         1
+#define ST_NORMAL        2
+#define ST_ESCAPE        3
+#define ST_QUOTE         4
+#define ST_QUOTE_END     5
+
+
+static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int length, int field_count, unsigned char *charmap)
+{
+    int index;
+    int state;
+    int newstate;
+    int prev;
+    msgpack_object_str *out;
+    char *buf;
+    char *a;    
+    char *b;
+    unsigned char *s = (unsigned char*) str;
+    unsigned char *ep = s + length;
+    
+    
+    if((out = flb_calloc(sizeof(msgpack_object_str), field_count + 2)) == NULL) {
+        flb_errno();
+        return NULL;
+    }
+    if((buf = flb_calloc(sizeof(char), length + 2)) == NULL) {
+        flb_free(out);
+        flb_errno();
+        return NULL;
+    }
+    *bufptr = buf;
+    b = buf;
+
+    index = 0;
+    state = ST_START;
+    a = b;
+    
+
+    while(s < ep) {
+        newstate = 0;
+        switch(state) {
+        case ST_START:
+            while(s < ep && !newstate) {
+                int ch = *s++;
+                int v = charmap[ch];
+                if(v == 0) {
+                    *b++ = ch;
+                    newstate = ST_NORMAL;
+                } else if(v == MARK_SPACE) {
+                    // skip
+                } else if(v == MARK_DELIMITER && index < field_count) {
+                    out[index].ptr = a;                
+                    out[index].size = b - a;
+                    *b++ = 0;
+                    a = b;
+                    index++;
+                } else if(v == MARK_ESCAPE) {
+                    newstate = ST_ESCAPE;
+                    prev     = ST_NORMAL;                    
+                    *b++ = ch;
+                    break;
+                } else if(v == MARK_QUOTE) {
+                    newstate = ST_QUOTE;
+                } else {
+                    *b++ = ch;
+                    newstate = ST_NORMAL;
+                    break;
+                }
+            }
+            break;
+
+        case ST_NORMAL:
+            while(s < ep && !newstate) {
+                int ch = *s++;
+                int v = charmap[ch];
+                if(v == 0) {
+                    *b++ = ch;
+                } else if(v == MARK_SPACE) {
+                    *b++ = ch;                    
+                } else if(v == MARK_DELIMITER && index < field_count) {
+                    out[index].ptr = a;                
+                    out[index].size = b - a;
+                    *b++ = 0;
+                    a = b;
+                    index++;
+                    newstate = ST_START;
+                } else if(v == MARK_ESCAPE) {
+                    newstate = ST_ESCAPE;
+                    prev  = ST_NORMAL;                    
+                    *b++ = ch;
+                } else {
+                    *b++ = ch;
+                }
+            }
+            break;
+
+        case ST_QUOTE:
+            while(s < ep && !newstate) {
+                int ch = *s++;
+                int v = charmap[ch];
+                if(v == 0) {
+                    *b++ = ch;
+                } else if(v == MARK_SPACE) {
+                    *b++ = ch;
+                } else if(v == MARK_QUOTE) {
+                    newstate = ST_QUOTE_END;
+                } else if(v == MARK_ESCAPE) {
+                    newstate = ST_ESCAPE;
+                    prev     = ST_QUOTE;
+                    *b++ = ch;
+                } else {
+                    *b++ = ch;
+                }
+            }
+            break;
+            
+        case ST_ESCAPE:
+            if(s < ep) {
+                int ch = *s++;                
+                switch(ch) {
+                case '\'':
+                    *b++ = '\'';
+                    break;
+                case '\"':
+                    *b++ = '\"';
+                    break;
+                case '\\':
+                    *b++ = '\\';
+                    break;
+                case 'n':
+                    *b++ = '\n';
+                    break;
+                case 'r':
+                    *b++ = '\r';
+                    break;
+                case 'b':
+                    *b++ = '\b';
+                    break;
+                case 'v':
+                    *b++ = '\v';
+                    break;
+                case 'f':
+                    *b++ = '\f';
+                    break;
+                case 't':
+                    *b++ = '\t';
+                    break;
+                case 'e':
+                    *b++ = 0x1b;
+                    break;
+                case '?':
+                    *b++ = '?';
+                    break;
+                case '0':
+                    *b++ = 0;
+                    break;
+                default:
+                    *b++ = '\\';
+                    *b++ = ch;
+                    break;
+                }
+                newstate = prev;
+            }
+            break;
+        case ST_QUOTE_END:
+            if(s < ep && !newstate) {
+                int ch = *s++;
+                int v = charmap[ch];
+                if(v == MARK_SPACE) {
+                    // skip
+                } else if(v == MARK_DELIMITER) {
+                    out[index].ptr  = a;
+                    out[index].size = b - a;
+                    index++;
+                    *b++ = 0;
+                    a = b;
+                    newstate = ST_START;
+                } 
+            }
+            break;
+        default:
+            abort();
+        }
+        state = newstate;
+    }
+    switch(state) {
+    case ST_START:
+    case ST_QUOTE:
+        flb_warn("[filter_csv] unfinished quote");
+        break;
+    case ST_ESCAPE:
+        flb_warn("[filter_csv] unfinished escape");
+        *b++ = '\\';
+        break;
+    default:
+        break;
+    }
+    out[index].ptr  = a;
+    out[index].size = b - a;
+    index++;
+    
+    return out;
+}
+
 
 static int cb_csv_init(struct flb_filter_instance *f_ins,
                        struct flb_config *config,
@@ -396,9 +481,10 @@ static msgpack_object *get_key_value(msgpack_object *map, char *keyValue, int *i
     int mapSize = map->via.map.size;
     char *key_str;
     int   key_len;
+    int   i;
     
     kv = map->via.map.ptr;
-    for(int i=0; i< mapSize; i++) {
+    for(i=0; i< mapSize; i++) {
         int ret = msgpackobj2char(&(kv[i].key), &key_str, &key_len);
         if(ret == 0 && key_len == keyLen && !strncasecmp(key_str, keyValue, keyLen)) {
             if(index) {
@@ -478,7 +564,8 @@ static int cb_csv_filter(void *data, size_t bytes,
 
         buf = NULL;
         
-        parsed_values = parse_csv_values(val_object->via.str.ptr, &buf, val_object->via.str.size, ctx->field_count, ctx->delimiter, ctx->quote, ctx->escape, ctx->skipInitialSpace);
+        // parsed_values = parse_csv_values(val_object->via.str.ptr, &buf, val_object->via.str.size, ctx->field_count, ctx->delimiter, ctx->quote, ctx->escape, ctx->skipInitialSpace);
+        parsed_values = parse_csv_values(val_object->via.str.ptr, &buf, val_object->via.str.size, ctx->field_count, ctx->charmap);
 
         if(!parsed_values) {
             flb_error("[filter_csv] parsing error");
