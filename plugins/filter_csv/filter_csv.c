@@ -24,7 +24,7 @@
 
 #include <string.h>
 #include <fluent-bit.h>
-
+#include <monkey/mk_core.h>
 #include "filter_csv.h"
 
 static int msgpackobj2char(msgpack_object *obj,
@@ -165,7 +165,8 @@ static int csv_configure(struct filter_csv_ctx *ctx,
         values = flb_strdup(tmp);
         s = values;
         int index = 0;
-        while((tok = strsep(&s, " \t")) != NULL) {
+        while((tok = strsep(&s, ",")) != NULL) {
+            mk_string_trim(&tok);
             char *field = flb_strdup(tok);
             if(field == NULL) {
                 flb_errno();
