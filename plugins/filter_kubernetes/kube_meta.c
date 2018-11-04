@@ -156,31 +156,33 @@ static int get_api_server_info(struct flb_kube *ctx,
      * e.g. debugging new parsers.
      */
     if (ctx->meta_preload_cache_dir && namespace && podname) {
-        char *payload;
+        int fd;
+        char *payload = NULL;
         size_t payload_size = 0;
+        struct stat sb;
+
         ret = snprintf(uri, sizeof(uri) - 1, "%s/%s-%s.meta", ctx->meta_preload_cache_dir, namespace, podname);
         if (ret > 0) {
-            struct stat sb;
-            int fd = open(uri, O_RDONLY, 0);
+            fd = open(uri, O_RDONLY, 0);
             if (fd > 0) {
-                if (fstat(fd, &sb) == 0)
-                {
+                if (fstat(fd, &sb) == 0) {
                     payload = flb_malloc(sb.st_size);
                     if (payload) {
                         ret = read(fd, payload, sb.st_size);
                         if (ret == sb.st_size) {
                             payload_size = ret;
-                        } else {
-                            free(payload);
                         }
                     }
-                    close(fd);
                 }
+                close(fd);
             }
         }
         if (payload_size) {
             packed = flb_pack_json(payload, payload_size,
                                    &buf, &size, &root_type);
+        }
+
+        if (payload) {
             flb_free(payload);
         }
     }
