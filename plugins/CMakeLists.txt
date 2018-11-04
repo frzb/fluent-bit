@@ -166,6 +166,10 @@ REGISTER_FILTER_PLUGIN("filter_record_modifier")
 REGISTER_FILTER_PLUGIN("filter_nest")
 REGISTER_FILTER_PLUGIN("filter_modify")
 
+if(FLB_FILTER_CSV)
+  REGISTER_FILTER_PLUGIN("filter_csv")
+endif()
+
 # Register external input and output plugins
 if(EXT_IN_PLUGINS)
   string(REPLACE "," ";" plugins ${EXT_IN_PLUGINS})
