@@ -87,7 +87,7 @@ static int parse_char(char *str, int def) {
         } else if(!strcasecmp(str,"backslash")) {
             return '\\';
         } else {
-            flb_error("[filter_csv] bad special char : %s", str);
+            fprintf(stderr,"[filter_csv] bad special char : %s", str);
             return -1;
         }
     } else {
@@ -105,7 +105,7 @@ static int parse_boolean(char *str, int def) {
         return -1;
     }
 }
-
+#define MARK_NONE        0
 #define MARK_DELIMITER   1
 #define MARK_ESCAPE      2
 #define MARK_QUOTE       3
@@ -135,14 +135,82 @@ static int csv_configure(struct filter_csv_ctx *ctx,
         ctx->message_field = flb_strdup(tmp);
     }
 
+    tmp = flb_filter_get_property("delimiter", f_ins);
+    if (tmp) {
+        ctx->delimiter = parse_char(tmp,ctx->delimiter);
+    }
+    tmp = flb_filter_get_property("escape", f_ins);
+    if (tmp) {
+        ctx->escape = parse_char(tmp,ctx->escape);
+    }
+    tmp = flb_filter_get_property("quote", f_ins);
+    if (tmp) {
+        ctx->quote = parse_char(tmp,ctx->quote);
+    }
+
+    tmp = flb_filter_get_property("double_quote", f_ins);
+    if (tmp) {
+        ctx->double_quote = parse_boolean(tmp, ctx->double_quote);
+    }
+
+    tmp = flb_filter_get_property("skip_initial_space", f_ins);
+    if(tmp) {
+        ctx->skip_initial_space = parse_boolean(tmp, ctx->skip_initial_space);
+    }
+
+    tmp = flb_filter_get_property("delete_original", f_ins);
+    if (tmp) {
+        ctx->delete_original = parse_boolean(tmp, ctx->delete_original);
+    }
+
+    tmp = flb_filter_get_property("has_empty_values", f_ins);
+    if(tmp) {
+        ctx->has_empty_values = parse_boolean(tmp, ctx->has_empty_values);
+    }
+
+    if(ctx->delimiter == 0) {
+        flb_error("[filter_csv] no delimiter defined");
+        return -1;
+    }
+
+    ctx->message_field_length = strlen(ctx->message_field);
+
+    if(ctx->delimiter) {
+        ctx->charmap[ctx->delimiter] = MARK_DELIMITER;
+    }
+
+    if(ctx->escape) {
+        if(ctx->charmap[ctx->escape]) {
+            flb_error("[filter_csv] escape char is already reserved (%c)", ctx->escape);
+            return -1;
+        }
+        ctx->charmap[ctx->escape] = MARK_ESCAPE;
+    }
+
+    if(ctx->quote) {
+        if(ctx->charmap[ctx->quote]) {
+            flb_error("[filter_csv] quote char is already reserved (%c)", ctx->quote);
+            return -1;
+        }
+        ctx->charmap[ctx->quote] = MARK_QUOTE;
+    }
+    
+    if(ctx->skip_initial_space) {
+        if(!ctx->charmap[' ']) {
+            ctx->charmap[' '] = MARK_SPACE;
+        }
+    }
+
+
     tmp = flb_filter_get_property("fields", f_ins);
     if (tmp) {
+        flb_error("[filter_csv] quote char is already reserved (%c)", ctx->quote);
         // lazy way to calculae count of fields
         char *values = flb_strdup(tmp);
         char *s = values;
         char *tok;
         int field_count = 0;
-        while((tok = strsep(&s, " \t")) != NULL) {
+        while((tok = strsep(&s, ",")) != NULL) {
             field_count++;
             if(field_count >= 100) {
                 abort();
@@ -179,70 +247,22 @@ static int csv_configure(struct filter_csv_ctx *ctx,
             index++;
         }
         flb_free(values);
+    } else {
+        flb_error("[filter_csv] no 'fields' defined");
     }
-    tmp = flb_filter_get_property("delimiter", f_ins);
-    if (tmp) {
-        ctx->delimiter = parse_char(tmp,ctx->delimiter);
-    }
-    tmp = flb_filter_get_property("escape", f_ins);
-    if (tmp) {
-        ctx->escape = parse_char(tmp,ctx->escape);
-    }
-    tmp = flb_filter_get_property("quote", f_ins);
-    if (tmp) {
-        ctx->quote = parse_char(tmp,ctx->quote);
-    }
-
-    tmp = flb_filter_get_property("double_quote", f_ins);
-    if (tmp) {
-        ctx->double_quote = parse_boolean(tmp, ctx->double_quote);
-    }
-
-    tmp = flb_filter_get_property("skip_initial_space", f_ins);
-    if(tmp) {
-        ctx->skip_initial_space = parse_boolean(tmp, ctx->skip_initial_space);
-    }
-
-    tmp = flb_filter_get_property("delete_original", f_ins);
-    if (tmp) {
-        ctx->delete_original = parse_boolean(tmp, ctx->delete_original);
-    }
-
-    tmp = flb_filter_get_property("has_empty_values", f_ins);
-    if(tmp) {
-        ctx->has_empty_values = parse_boolean(tmp, ctx->has_empty_values);
-    }
-
 
     if(ctx->field_count <= 0) {
         flb_error("[filter_csv] no fields defined");
         return -1;
     }
 
-    if(ctx->delimiter == 0) {
-        flb_error("[filter_csv] no delimiter defined");
-        return -1;
-    }
+    
 
-    ctx->message_field_length = strlen(ctx->message_field);
-
-    if(ctx->quote) {
-        ctx->charmap[ctx->quote] = MARK_QUOTE;
-    }
-    if(ctx->escape) {
-        ctx->charmap[ctx->escape] = MARK_ESCAPE;
-    }
-    if(ctx->delimiter) {
-        ctx->charmap[ctx->delimiter] = MARK_DELIMITER;
-    }
-
-    if(ctx->skip_initial_space) {
-        ctx->charmap[' '] = MARK_SPACE;
-    }
     return 0;
 }
 
 
+#define ST_NULL          0
 #define ST_START         1
 #define ST_NORMAL        2
 #define ST_ESCAPE        3
@@ -255,7 +275,7 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
     int index;
     int state;
     int newstate;
-    int prev;
+    int prevstate;
     msgpack_object_str *out;
     char *buf;
     char *a;
@@ -264,13 +284,13 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
     unsigned char *ep = s + length;
 
 
-    if((out = flb_calloc(sizeof(msgpack_object_str), field_count + 2)) == NULL) {
+    if((out = flb_calloc(sizeof(msgpack_object_str), field_count + 1)) == NULL) {
         flb_errno();
         return NULL;
     }
-    if((buf = flb_calloc(sizeof(char), length + 2)) == NULL) {
+    if((buf = flb_calloc(sizeof(char), length + 1)) == NULL) {
+        flb_errno();        
         flb_free(out);
-        flb_errno();
         return NULL;
     }
     *bufptr = buf;
@@ -281,8 +301,8 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
     a = b;
 
 
-    while(s < ep) {
-        newstate = 0;
+    while(s < ep && index < field_count) {
+        newstate = ST_NULL;
         switch(state) {
         case ST_START:
             while(s < ep && !newstate) {
@@ -293,15 +313,16 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                     newstate = ST_NORMAL;
                 } else if(v == MARK_SPACE) {
                     // skip
-                } else if(v == MARK_DELIMITER && index < field_count) {
+                } else if(v == MARK_DELIMITER) {
                     out[index].ptr = a;
                     out[index].size = b - a;
                     *b++ = 0;
                     a = b;
                     index++;
+                    newstate = ST_START;
                 } else if(v == MARK_ESCAPE) {
                     newstate = ST_ESCAPE;
-                    prev     = ST_NORMAL;
+                    prevstate = ST_NORMAL;
                     *b++ = ch;
                     break;
                 } else if(v == MARK_QUOTE) {
@@ -331,8 +352,7 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                     newstate = ST_START;
                 } else if(v == MARK_ESCAPE) {
                     newstate = ST_ESCAPE;
-                    prev  = ST_NORMAL;
-                    *b++ = ch;
+                    prevstate  = ST_NORMAL;
                 } else {
                     *b++ = ch;
                 }
@@ -351,8 +371,7 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                     newstate = ST_QUOTE_END;
                 } else if(v == MARK_ESCAPE) {
                     newstate = ST_ESCAPE;
-                    prev     = ST_QUOTE;
-                    *b++ = ch;
+                    prevstate     = ST_QUOTE;
                 } else {
                     *b++ = ch;
                 }
@@ -404,11 +423,11 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                     *b++ = ch;
                     break;
                 }
-                newstate = prev;
+                newstate = prevstate;
             }
             break;
         case ST_QUOTE_END:
-            if(s < ep && !newstate) {
+            while(s < ep && !newstate) {
                 int ch = *s++;
                 int v = charmap[ch];
                 if(v == MARK_SPACE) {
@@ -426,15 +445,16 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
         default:
             abort();
         }
-        state = newstate;
+        if(newstate != ST_NULL) {
+            state = newstate;
+        }
     }
     switch(state) {
-    case ST_START:
     case ST_QUOTE:
-        flb_warn("[filter_csv] unfinished quote");
+        flb_warn("[filter_csv] unfinished quote: %s", str);
         break;
     case ST_ESCAPE:
-        flb_warn("[filter_csv] unfinished escape");
+        flb_warn("[filter_csv] unfinished escape: %s", str);
         *b++ = '\\';
         break;
     default:
