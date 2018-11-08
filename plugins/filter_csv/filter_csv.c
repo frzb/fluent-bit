@@ -213,7 +213,6 @@ static int csv_configure(struct filter_csv_ctx *ctx,
 
     tmp = flb_filter_get_property("fields", f_ins);
     if (tmp) {
-        flb_error("[filter_csv] quote char is already reserved (%c)", ctx->quote);
         // lazy way to calculae count of fields
         char *values = flb_strdup(tmp);
         char *s = values;
