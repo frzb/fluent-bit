@@ -273,7 +273,6 @@ static int csv_configure(struct filter_csv_ctx *ctx,
 #define ST_ESCAPE        3
 #define ST_QUOTE         4
 #define ST_QUOTE_END     5
-#define ST_DONE          6
 
 
 static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int length, int field_count, unsigned char *charmap)
@@ -325,7 +324,7 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                     a = b;
                     index++;
                     if(index >= field_count) {
-                        newstate = ST_DONE;
+                        goto done;
                     }
                 } else if(v == MARK_ESCAPE) {
                     newstate = ST_ESCAPE;
@@ -357,8 +356,9 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                     a = b;
                     index++;
                     if(index >= field_count) {
-                        newstate = ST_DONE;
+                        goto done;
                     }
+                    newstate = ST_START;
                 } else if(v == MARK_ESCAPE) {
                     newstate = ST_ESCAPE;
                     prevstate  = ST_NORMAL;
@@ -448,39 +448,33 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
                     *b++ = 0;
                     a = b;
                     if(index >= field_count) {
-                        newstate = ST_DONE;
-                    } else {                    
-                        newstate = ST_START;
+                        goto done;
                     }
+                    newstate = ST_START;
                 }
             }
-            break;
-        case ST_DONE:
             break;
         default:
             abort();
         }
         if(newstate) {
-            if(newstate == ST_DONE) {
-                break;
-            }
             state = newstate;
         }
     }
-    
+
     switch(state) {
     case ST_START:
     case ST_NORMAL:
     case ST_QUOTE_END:
         out[index].ptr  = a;
-        out[index].size = b - a;        
+        out[index].size = b - a;
         break;
 
     case ST_QUOTE:
         flb_warn("[filter_csv] unfinished quote: %s", str);
         out[index].ptr  = a;
         out[index].size = b - a;
-        index++;        
+        index++;
         break;
     case ST_ESCAPE:
         flb_warn("[filter_csv] unfinished escape: %s", str);
@@ -489,12 +483,11 @@ static msgpack_object_str *parse_csv_values(const char *str, char **bufptr, int 
         out[index].size = b - a;
         index++;
         break;
-    case ST_DONE:
-        break;
     default:
         break;
     }
-    
+ done:
+
     return out;
 }
 
