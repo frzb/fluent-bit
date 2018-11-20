@@ -109,7 +109,7 @@ static void cb_results(unsigned char *name, unsigned char *value,
 int flb_parser_regex_do(struct flb_parser *parser,
                         char *buf, size_t length,
                         void **out_buf, size_t *out_size,
-                        struct flb_time *out_time)
+                        struct flb_time *out_time, void *context)
 {
     int ret;
     int arr_size;
@@ -218,3 +218,13 @@ int flb_parser_regex_do(struct flb_parser *parser,
      */
     return last_byte;
 }
+
+
+struct flb_parser_type parser_type_regex = {
+    .name = "regex",
+    .description = "parse using regex",
+    .cb_init = NULL,
+    .cb_do   = flb_parser_regex_do,
+    .cb_exit = NULL,
+    .flags = FLB_PARSER_NEEDS_REGEX,
+};

@@ -237,7 +237,7 @@ static int logfmt_parser(struct flb_parser *parser,
 int flb_parser_logfmt_do(struct flb_parser *parser,
                         char *in_buf, size_t in_size,
                         void **out_buf, size_t *out_size,
-                        struct flb_time *out_time)
+                        struct flb_time *out_time, void *context)
 {
     int ret;
     time_t time_lookup;
@@ -305,3 +305,13 @@ int flb_parser_logfmt_do(struct flb_parser *parser,
 
     return last_byte;
 }
+
+
+struct flb_parser_type parser_type_logfmt = {
+    .name = "logfmt",
+    .description = "parser type logfmt",
+    .cb_init = NULL,
+    .cb_do   = flb_parser_logfmt_do,
+    .cb_exit = NULL,
+    .flags = 0
+};

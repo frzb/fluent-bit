@@ -82,6 +82,7 @@ static unsigned u64_to_str(uint64_t value, char* dst) {
     return length;
 }
 
+#if 0
 int flb_parser_regex_do(struct flb_parser *parser,
                         char *buf, size_t length,
                         void **out_buf, size_t *out_size,
@@ -101,6 +102,30 @@ int flb_parser_logfmt_do(struct flb_parser *parser,
                          char *buf, size_t length,
                          void **out_buf, size_t *out_size,
                          struct flb_time *out_time);
+#endif
+
+extern struct flb_parser_type  parser_type_regex;
+extern struct flb_parser_type  parser_type_json;
+extern struct flb_parser_type  parser_type_logfmt;
+extern struct flb_parser_type  parser_type_ltsv;
+
+struct flb_parser_type  *parser_type_list[] = {
+    &parser_type_regex,
+    &parser_type_json,
+    &parser_type_logfmt,
+    &parser_type_ltsv,
+    NULL,
+};
+
+struct flb_parser_type *flb_find_parser_type(char *typename) {
+    int i;
+    for(i =0; parser_type_list[i] != NULL; i++) {
+        if(!strcasecmp(parser_type_list[i]->name, typename)) {
+            return parser_type_list[i];
+        }
+    }
+    return NULL;
+}
 
 struct flb_parser *flb_parser_create(char *name, char *format,
                                      char *p_regex,
@@ -110,7 +135,8 @@ struct flb_parser *flb_parser_create(char *name, char *format,
                                      struct flb_parser_types *types,
                                      int types_len,
                                      struct mk_list *decoders,
-                                     struct flb_config *config)
+                                     struct flb_config *config,
+                                     struct mk_rconf_section *section)
 {
     int ret;
     int len;
@@ -120,6 +146,12 @@ struct flb_parser *flb_parser_create(char *name, char *format,
     struct mk_list *head;
     struct flb_parser *p;
     struct flb_regex *regex;
+    struct mk_rconf_section empty_section;
+
+    if(section == NULL) {
+        empty_section.name = "PARSER";
+        mk_list_init(&empty_section.entries);
+    }
 
     /* Iterate current parsers and make sure the new one don't exists */
     mk_list_foreach(head, &config->parsers) {
@@ -139,26 +171,13 @@ struct flb_parser *flb_parser_create(char *name, char *format,
     }
     p->decoders = decoders;
 
-    /* Format lookup */
-    if (strcasecmp(format, "regex") == 0) {
-        p->type = FLB_PARSER_REGEX;
-    }
-    else if (strcasecmp(format, "json") == 0) {
-        p->type = FLB_PARSER_JSON;
-    }
-    else if (strcmp(format, "ltsv") == 0) {
-        p->type = FLB_PARSER_LTSV;
-    }
-    else if (strcmp(format, "logfmt") == 0) {
-        p->type = FLB_PARSER_LOGFMT;
-    }
-    else {
+    if((p->ptype = flb_find_parser_type(format)) == NULL) {
         flb_error("[parser:%s] Invalid format %s", name, format);
         flb_free(p);
         return NULL;
     }
 
-    if (p->type == FLB_PARSER_REGEX) {
+    if(p->ptype->flags & FLB_PARSER_NEEDS_REGEX) {
         if (!p_regex) {
             flb_error("[parser:%s] Invalid regex pattern", name);
             flb_free(p);
@@ -278,6 +297,10 @@ struct flb_parser *flb_parser_create(char *name, char *format,
         p->time_key = flb_strdup(time_key);
     }
 
+    if(p->ptype->cb_init) {
+        p->ptype->cb_init(p, config, section);
+    }
+
     p->time_keep = time_keep;
     p->types = types;
     p->types_len = types_len;
@@ -290,7 +313,12 @@ struct flb_parser *flb_parser_create(char *name, char *format,
 void flb_parser_destroy(struct flb_parser *parser)
 {
     int i = 0;
-    if (parser->type == FLB_PARSER_REGEX) {
+
+    if(parser->ptype->cb_exit) {
+        parser->ptype->cb_exit(parser);
+    }
+
+    if (parser->regex) {
         flb_regex_destroy(parser->regex);
         flb_free(parser->p_regex);
     }
@@ -511,7 +539,7 @@ int flb_parser_conf_file(char *file, struct flb_config *config)
         /* Create the parser context */
         if (!flb_parser_create(name, format, regex,
                                time_fmt, time_key, time_offset, time_keep,
-                               types, types_len, decoders, config)) {
+                               types, types_len, decoders, config, section)) {
             goto fconf_error;
         }
 
@@ -583,25 +611,8 @@ struct flb_parser *flb_parser_get(char *name, struct flb_config *config)
 int flb_parser_do(struct flb_parser *parser, char *buf, size_t length,
                   void **out_buf, size_t *out_size, struct flb_time *out_time)
 {
-
-    if (parser->type == FLB_PARSER_REGEX) {
-        return flb_parser_regex_do(parser, buf, length,
-                                   out_buf, out_size, out_time);
-    }
-    else if (parser->type == FLB_PARSER_JSON) {
-        return flb_parser_json_do(parser, buf, length,
-                                  out_buf, out_size, out_time);
-    }
-    else if (parser->type == FLB_PARSER_LTSV) {
-        return flb_parser_ltsv_do(parser, buf, length,
-                                  out_buf, out_size, out_time);
-    }
-    else if (parser->type == FLB_PARSER_LOGFMT) {
-        return flb_parser_logfmt_do(parser, buf, length,
-                                  out_buf, out_size, out_time);
-    }
-
-    return -1;
+    return parser->ptype->cb_do(parser, buf, length,
+                                out_buf, out_size, out_time, parser->context);
 }
 
 /* Given a timezone string, return it numeric offset */
@@ -901,4 +912,9 @@ int flb_parser_typecast(char *key, int key_len,
         msgpack_pack_str_body(pck, val, val_len);
     }
     return 0;
+}
+
+void flb_parser_set_context(struct flb_parser *ins, void *context)
+{
+    ins->context = context;
 }

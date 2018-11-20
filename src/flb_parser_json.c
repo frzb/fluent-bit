@@ -28,7 +28,7 @@
 int flb_parser_json_do(struct flb_parser *parser,
                        char *in_buf, size_t in_size,
                        void **out_buf, size_t *out_size,
-                       struct flb_time *out_time)
+                       struct flb_time *out_time, void *context)
 {
     int i;
     int skip;
@@ -201,3 +201,12 @@ int flb_parser_json_do(struct flb_parser *parser,
     msgpack_unpacked_destroy(&result);
     return *out_size;
 }
+
+struct flb_parser_type parser_type_json = {
+    .name = "json",
+    .description = "parse json",
+    .cb_init = NULL,
+    .cb_do   = flb_parser_json_do,
+    .cb_exit = NULL,
+    .flags = 0
+};

@@ -270,7 +270,7 @@ struct flb_kube *flb_kube_conf_create(struct flb_filter_instance *i,
         }
 
         /* Force to regex parser */
-        if (ctx->parser->type != FLB_PARSER_REGEX) {
+        if (strcmp(ctx->parser->ptype->name,"regex")) {
             flb_error("[filter_kube] invalid parser type '%s'", tmp);
             flb_kube_conf_destroy(ctx);
             return NULL;

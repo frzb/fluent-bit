@@ -27,10 +27,35 @@
 #include <fluent-bit/flb_time.h>
 #include <msgpack.h>
 
+#if 0
 #define FLB_PARSER_REGEX 1
 #define FLB_PARSER_JSON  2
 #define FLB_PARSER_LTSV  3
 #define FLB_PARSER_LOGFMT 4
+#endif
+
+#define FLB_PARSER_NEEDS_REGEX 0x01
+
+struct flb_parser;
+
+struct flb_parser_type {
+    int flags;             /* Flags (not available at the moment */
+    char *name;            /* Parser type short name       */
+    char *description;     /* Description                  */
+
+    /* Callbacks */
+    int (*cb_init) (struct flb_parser *, struct flb_config *, struct mk_rconf_section *section);
+
+    int (*cb_do) (struct flb_parser *parser,
+                  char *buf, size_t length,
+                  void **out_buf, size_t *out_size,
+                  struct flb_time *out_time, void *context);
+
+    int (*cb_exit) (struct flb_parser *parser);
+};
+
+
+
 
 struct flb_parser_types {
     char *key;
@@ -38,9 +63,11 @@ struct flb_parser_types {
     int type;
 };
 
+
+
 struct flb_parser {
     /* configuration */
-    int type;             /* parser type */
+    struct flb_parser_type *ptype; /* parser typeref */
     char *name;           /* format name */
     char *p_regex;        /* pattern for main regular expression */
     char *time_fmt;       /* time format */
@@ -60,6 +87,8 @@ struct flb_parser {
     int time_with_tz;     /* do time_fmt consider a timezone ?  */
     struct flb_regex *regex;
     struct mk_list _head;
+    void *context;
+
 };
 
 enum {
@@ -87,7 +116,9 @@ struct flb_parser *flb_parser_create(char *name, char *format,
                                      struct flb_parser_types *types,
                                      int types_len,
                                      struct mk_list *decoders,
-                                     struct flb_config *config);
+                                     struct flb_config *config,
+                                     struct mk_rconf_section *section);
+
 int flb_parser_conf_file(char *file, struct flb_config *config);
 void flb_parser_destroy(struct flb_parser *parser);
 struct flb_parser *flb_parser_get(char *name, struct flb_config *config);
@@ -105,4 +136,7 @@ int flb_parser_typecast(char *key, int key_len,
                         msgpack_packer *pck,
                         struct flb_parser_types *types,
                         int types_len);
+
+void flb_parser_set_context(struct flb_parser *ins, void *context);
+
 #endif
