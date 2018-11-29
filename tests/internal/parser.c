@@ -387,9 +387,9 @@ void test_regex_parser_time_lookup()
         epoch = t->epoch + year_diff;
 
         /* Check time */
-        TEST_CHECK(out_time.tm.tv_sec == epoch);
+        TEST_CHECK_(out_time.tm.tv_sec == epoch,"(%s) (%s) out.sec(%d) != epoc(%d)", t->parser_name, buf, out_time.tm.tv_sec, epoch);
         nsec = t->frac_seconds * 1000000000;
-        TEST_CHECK(out_time.tm.tv_nsec == nsec);
+        TEST_CHECK_(out_time.tm.tv_nsec == nsec, "(%s) (%s) out.nsec(%d) != nsec(%d)", t->parser_name, buf, out_time.tm.tv_nsec, nsec);
 
         if (t->utc_offset != 0) {
             p->time_offset = toff;
