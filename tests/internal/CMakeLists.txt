@@ -22,6 +22,13 @@ if(FLB_METRICS)
     )
 endif()
 
+if(FLB_ENCODING)
+  set(UNIT_TESTS_FILES
+    ${UNIT_TESTS_FILES}
+    encoding.c
+    )
+endif()
+
 set(UNIT_TESTS_DATA
   data/pack/json_single_map_001.json
   data/pack/json_single_map_002.json

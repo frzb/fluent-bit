@@ -99,6 +99,14 @@ if(FLB_LUAJIT)
     )
 endif()
 
+
+if(FLB_ENCODING)
+  set(src
+    ${src}
+    "flb_encoding.c"
+    )
+endif()
+
 # Link to libco
 set(extra_libs
   ${extra_libs}

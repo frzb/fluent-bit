@@ -506,6 +506,29 @@ int flb_parser_conf_file(char *file, struct flb_config *config)
         /* Decoders */
         decoders = flb_parser_decoder_list_create(section);
 
+
+#ifdef FLB_HAVE_ENCODING
+        /* set input encoding */
+        str = mk_rconf_section_get_key(section, "Encoding",
+                                            MK_RCONF_STR);
+<<<<<<< HEAD
+    
+=======
+
+>>>>>>> core: charset decoding support (for parsers)
+        if(str) {
+            encoding = flb_get_encoding(str);
+            if(encoding == NULL) {
+                flb_error("[in_parser] invalid input encoding '%s' (%s)", str, name);
+<<<<<<< HEAD
+                goto fconf_error;                
+=======
+                goto fconf_error;
+>>>>>>> core: charset decoding support (for parsers)
+            }
+        }
+    }
+#endif
         /* Create the parser context */
         if (!flb_parser_create(name, format, regex,
                                time_fmt, time_key, time_offset, time_keep,
@@ -581,25 +604,48 @@ struct flb_parser *flb_parser_get(char *name, struct flb_config *config)
 int flb_parser_do(struct flb_parser *parser, char *buf, size_t length,
                   void **out_buf, size_t *out_size, struct flb_time *out_time)
 {
+    int ret;    
+#ifdef FLB_HAVE_ENCODING
+
+    char *decoded_buf = NULL;
+    size_t decoded_size;
+
+    if(parser->encoding) {
+        ret = flb_decode_to_utf8(parser->encoding, buf, length,
+                                 &decoded_buf, &decoded_size, flags);
+        if(ret == FLB_ENCODING_SUCCESS) {
+            buf = decoded_buf;
+            length = decoded_size;
+        }
+    }
+#endif
 
     if (parser->type == FLB_PARSER_REGEX) {
-        return flb_parser_regex_do(parser, buf, length,
+        ret = flb_parser_regex_do(parser, buf, length,
                                    out_buf, out_size, out_time);
     }
     else if (parser->type == FLB_PARSER_JSON) {
-        return flb_parser_json_do(parser, buf, length,
+        ret = flb_parser_json_do(parser, buf, length,
                                   out_buf, out_size, out_time);
     }
     else if (parser->type == FLB_PARSER_LTSV) {
-        return flb_parser_ltsv_do(parser, buf, length,
+        ret = flb_parser_ltsv_do(parser, buf, length,
                                   out_buf, out_size, out_time);
     }
     else if (parser->type == FLB_PARSER_LOGFMT) {
-        return flb_parser_logfmt_do(parser, buf, length,
-                                  out_buf, out_size, out_time);
+        ret =  flb_parser_logfmt_do(parser, buf, length,
+                                    out_buf, out_size, out_time);
     }
+    else {
+        ret = -1;
+    }
+#ifdef FLB_HAVE_ENCODING
+    if(decoded_buf) {
+        flb_free(decoded_buf);
+    }
+#endif
 
-    return -1;
+    return ret;
 }
 
 /* Given a timezone string, return it numeric offset */

@@ -192,6 +192,10 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
     msgpack_sbuffer *out_sbuf;
     msgpack_packer *out_pck;
     struct flb_tail_config *ctx = file->config;
+#ifdef FLB_HAVE_ENCODING
+    char *decoded_buf = NULL;
+    int   decoded_len;
+#endif
 
     /* Create a temporal msgpack buffer */
     msgpack_sbuffer_init(&mp_sbuf);
@@ -225,6 +229,22 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
         line = data;
         line_len = len;
         repl_line = NULL;
+
+#ifdef FLB_HAVE_ENCODING
+        if(ctx->encoding) {
+            ret = flb_encoding(ctx->encoding, line, len,
+                               &decoded_buf, &decoded_len,
+                               FLB_ENCODING_F_ACCEPT_SAME);
+            if(ret == FLB_ENCODING_SAME) {
+                // no change nothing new is allocated.
+            } else if(ret == FLB_ENCODING_SUCCESS) {
+                line = debcoded_buf;
+                line_len = decoded_len;
+            } else {
+                flb_error("[in_tail] decoding error");
+            }
+        }
+#endif
 
         if (ctx->docker_mode) {
             ret = flb_tail_dmode_process_content(now, line, line_len,
@@ -313,6 +333,9 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
 #endif
 
     go_next:
+#ifdef FLB_HAVE_ENCODING
+        flb_free(decoded_buf);
+#endif
         flb_free(repl_line);
         repl_line = NULL;
         /* Adjust counters */

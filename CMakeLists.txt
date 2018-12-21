@@ -58,6 +58,7 @@ option(FLB_BACKTRACE          "Enable stacktrace support"    Yes)
 option(FLB_LUAJIT             "Enable Lua Scripting support" Yes)
 option(FLB_STATIC_CONF        "Build binary using static configuration")
 option(FLB_CORO_STACK_SIZE    "Set coroutine stack size")
+option(FLB_ENCODING           "Parser charset encoding"     No)
 
 # Metrics: Experimental Feature, disabled by default on 0.12 series
 # but enabled in the upcoming 0.13 release. Note that development

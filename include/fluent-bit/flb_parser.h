@@ -27,6 +27,9 @@
 #include <fluent-bit/flb_config.h>
 #include <fluent-bit/flb_time.h>
 #include <msgpack.h>
+#ifdef FLB_HAVE_ENCODING
+#include <fluent-bit/flb_encoding.h>
+#endif
 
 #define FLB_PARSER_REGEX 1
 #define FLB_PARSER_JSON  2
@@ -48,6 +51,9 @@ struct flb_parser {
     char *time_key;       /* field name that contains the time */
     int time_offset;      /* fixed UTC offset */
     int time_keep;        /* keep time field */
+#ifdef FLB_HAVE_ENCODING
+    struct flb_encoding *encoding;
+#endif
     char *time_frac_secs; /* time format have fractional seconds ? */
     struct flb_parser_types *types; /* type casting */
     int types_len;

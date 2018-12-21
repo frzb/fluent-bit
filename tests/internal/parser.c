@@ -174,8 +174,9 @@ void test_parser_time_lookup()
     struct tm tm;
 
     /* Dummy config context */
-    config = flb_malloc(sizeof(struct flb_config));
-    mk_list_init(&config->parsers);
+    // config = flb_malloc(sizeof(struct flb_config));
+    // mk_list_init(&config->parsers);
+    config = flb_config_init();
 
     load_json_parsers(config);
 
@@ -230,7 +231,7 @@ void test_parser_time_lookup()
     }
 
     flb_parser_exit(config);
-    flb_free(config);
+    flb_config_exit(config);
 }
 
 /* Do time lookup using the JSON parser backend*/
@@ -252,8 +253,7 @@ void test_json_parser_time_lookup()
     struct time_check *t;
 
     /* Dummy config context */
-    config = flb_malloc(sizeof(struct flb_config));
-    mk_list_init(&config->parsers);
+    config = flb_config_init();
 
     /* Load parsers */
     load_json_parsers(config);
@@ -315,7 +315,7 @@ void test_json_parser_time_lookup()
     }
 
     flb_parser_exit(config);
-    flb_free(config);
+    flb_config_exit(config);
 }
 
 /* Do time lookup using the Regex parser backend*/
@@ -337,8 +337,7 @@ void test_regex_parser_time_lookup()
     struct time_check *t;
 
     /* Dummy config context */
-    config = flb_malloc(sizeof(struct flb_config));
-    mk_list_init(&config->parsers);
+    config = flb_config_init();
 
     /* Load parsers */
     load_regex_parsers(config);
@@ -401,8 +400,9 @@ void test_regex_parser_time_lookup()
     }
 
     flb_parser_exit(config);
-    flb_free(config);
+    flb_config_exit(config);
 }
+
 
 TEST_LIST = {
     { "tzone_offset", test_parser_tzone_offset},
