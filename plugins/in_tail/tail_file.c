@@ -230,22 +230,6 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
         line_len = len;
         repl_line = NULL;
 
-#ifdef FLB_HAVE_ENCODING
-        if(ctx->encoding) {
-            ret = flb_encoding(ctx->encoding, line, len,
-                               &decoded_buf, &decoded_len,
-                               FLB_ENCODING_F_ACCEPT_SAME);
-            if(ret == FLB_ENCODING_SAME) {
-                // no change nothing new is allocated.
-            } else if(ret == FLB_ENCODING_SUCCESS) {
-                line = debcoded_buf;
-                line_len = decoded_len;
-            } else {
-                flb_error("[in_tail] decoding error");
-            }
-        }
-#endif
-
         if (ctx->docker_mode) {
             ret = flb_tail_dmode_process_content(now, line, line_len,
                                                  &repl_line, &repl_line_len,
