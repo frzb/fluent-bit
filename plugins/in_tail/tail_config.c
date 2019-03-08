@@ -21,7 +21,9 @@
 #include <fluent-bit/flb_info.h>
 #include <fluent-bit/flb_log.h>
 #include <fluent-bit/flb_input.h>
-
+#ifdef FLB_HAVE_ICONV
+#include <fluent-bit/flb_iconv.h>
+#endif
 #include <stdlib.h>
 #include <fcntl.h>
 
@@ -41,6 +43,9 @@ struct flb_tail_config *flb_tail_config_create(struct flb_input_instance *i_ins,
     long nsec;
     ssize_t bytes;
     char *tmp;
+#ifdef FLB_HAVE_ICONV
+    char *tmp2;
+#endif
     struct flb_tail_config *ctx;
 
     ctx = flb_calloc(1, sizeof(struct flb_tail_config));
@@ -308,6 +313,27 @@ struct flb_tail_config *flb_tail_config_create(struct flb_input_instance *i_ins,
         }
     }
 
+#ifdef FLB_HAVE_ICONV
+    tmp = flb_input_get_property("from_encoding", i_ins);
+    tmp2 = flb_input_get_property("encoding", i_ins);
+    if(tmp) {
+        if(!tmp2) {
+            tmp2 = "UTF8";
+        } else if(!strcasecmp(tmp2,"default")) {
+            tmp2 = "";
+        }
+        if(!strcasecmp(tmp,"default")) {
+            tmp = "";
+        }
+        ctx->iconvert = flb_iconv_open(tmp2,tmp);
+        if(ctx->iconvert == NULL) {
+            flb_error("[in_tail] cannot init iconv: '%s'=>'%s'", tmp, tmp2);
+        }
+    } else {
+        ctx->iconvert = NULL;
+    }
+#endif
+
 #ifdef FLB_HAVE_METRICS
     flb_metrics_add(FLB_TAIL_METRIC_F_OPENED,
                     "files_opened", ctx->i_ins->metrics);
@@ -336,6 +362,11 @@ int flb_tail_config_destroy(struct flb_tail_config *config)
     }
 #endif
 
+#ifdef FLB_HAVE_ICONV
+    if(config->iconvert) {
+        iconv_close(config->iconvert);
+    }
+#endif
     if (config->db != NULL) {
         flb_tail_db_close(config->db);
     }
