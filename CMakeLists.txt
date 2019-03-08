@@ -60,6 +60,7 @@ option(FLB_LUAJIT             "Enable Lua Scripting support" Yes)
 option(FLB_SYSTEM_STRPTIME    "Use strptime in system libc"  Yes)
 option(FLB_STATIC_CONF        "Build binary using static configuration")
 option(FLB_CORO_STACK_SIZE    "Set coroutine stack size")
+option(FLB_ICONV              "Enable iconv string decoding"  No)
 
 # Metrics: Experimental Feature, disabled by default on 0.12 series
 # but enabled in the upcoming 0.13 release. Note that development
@@ -143,6 +144,7 @@ if(FLB_ALL)
   # Global
   set(FLB_DEBUG        1)
   set(FLB_TLS          1)
+  set(FLB_ICONV        1)
 
   # Input plugins
   set(FLB_IN_CPU       1)
@@ -172,6 +174,7 @@ if(FLB_ALL)
   set(FLB_OUT_STDOUT   1)
   set(FLB_OUT_LIB      1)
   set(FLB_OUT_FLOWCOUNTER 1)
+
 endif()
 
 if(FLB_DEV)
@@ -563,6 +566,14 @@ if(FLB_INOTIFY)
     }" FLB_HAVE_INOTIFY)
   if(FLB_HAVE_INOTIFY)
     FLB_DEFINITION(FLB_HAVE_INOTIFY)
+  endif()
+endif()
+
+# iconv
+if(FLB_ICONV)
+  include(FindIconv)
+  if(Iconv_FOUND)
+      FLB_DEFINITION(FLB_HAVE_ICONV)
   endif()
 endif()
 
