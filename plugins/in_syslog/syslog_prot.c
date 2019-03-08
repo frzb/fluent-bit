@@ -23,6 +23,9 @@
 #include <fluent-bit/flb_info.h>
 #include <fluent-bit/flb_parser.h>
 #include <fluent-bit/flb_time.h>
+#ifdef FLB_HAVE_ICONV
+#include <fluent-bit/flb_iconv.h>
+#endif
 
 #include "syslog.h"
 #include "syslog_conn.h"
@@ -63,6 +66,12 @@ int syslog_prot_process(struct syslog_conn *conn)
     size_t out_size;
     struct flb_time out_time;
     struct flb_syslog *ctx = conn->ctx;
+    char *line;
+    size_t line_len;
+#ifdef FLB_HAVE_ICONV
+    char *iconv_data;
+    size_t iconv_len;
+#endif
 
     eof = p = conn->buf_data;
     end = conn->buf_data + conn->buf_len;
@@ -97,8 +106,24 @@ int syslog_prot_process(struct syslog_conn *conn)
             continue;
         }
 
+#ifdef FLB_HAVE_ICONV
+        iconv_data = NULL;
+        line = p;
+        line_len = len;
+        if(ctx->iconvert) {
+            ret = flb_iconv_execute(ctx->iconvert, line, line_len, &iconv_data, &iconv_len, FLB_ICONV_ACCEPT_NOT_CHANGED);
+            if(ret == FLB_ICONV_SUCCESS) {
+                line = iconv_data;
+                line_len  = iconv_len;
+            }
+        }
+#else
+        line = p;
+        line_len = len;
+#endif
+
         /* Process the string */
-        ret = flb_parser_do(ctx->parser, p, len,
+        ret = flb_parser_do(ctx->parser, line, line_len,
                             &out_buf, &out_size, &out_time);
         if (ret >= 0) {
             pack_line(ctx, &out_time, out_buf, out_size);
@@ -107,7 +132,12 @@ int syslog_prot_process(struct syslog_conn *conn)
         else {
             flb_warn("[in_syslog] error parsing log message");
         }
-
+#ifdef FLB_HAVE_ICONV
+        if(iconv_data) {
+            flb_free(iconv_data);
+            iconv_data = NULL;
+        }
+#endif
         conn->buf_parsed += len + 1;
         end = conn->buf_data + conn->buf_len;
         eof = p = conn->buf_data + conn->buf_parsed;
