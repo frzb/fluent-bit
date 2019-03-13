@@ -23,5 +23,6 @@
 
 int flb_unescape_string(char *buf, int buf_len, char **unesc_buf);
 int flb_unescape_string_utf8(char *in_buf, int sz, char *out_buf);
+int flb_unquote_string(char *buf, int buf_len, char **unesc_buf);
 
 #endif
