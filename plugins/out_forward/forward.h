@@ -28,6 +28,8 @@
 #include <mbedtls/entropy.h>
 #include <mbedtls/error.h>
 #include <mbedtls/ctr_drbg.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/sha256.h>
 #endif
 
 /*
@@ -42,6 +44,8 @@
 struct flb_forward_config {
     int secured;              /* Using Secure Forward mode ?  */
     int time_as_integer;      /* Use backward compatible timestamp ? */
+    int require_ack_response; /* Require acknowledge for "chunk" */
+    int send_options;         /* send options in messages */
 
     /* config */
     flb_sds_t shared_key;     /* shared key                   */
