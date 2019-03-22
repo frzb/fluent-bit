@@ -465,6 +465,373 @@ void test_utf8_to_json()
     utf8_tests_destroy(n_tests);
 }
 
+/* check with diffrent sizes around actual size */
+static void check_pk(char *label, msgpack_sbuffer *sbuf)
+{
+    int ret;
+    size_t i;
+    size_t limit;
+    char *data = sbuf->data;
+    size_t size = sbuf->size;
+    size_t alloc = sbuf->alloc;
+
+    limit = (size + 2 ) < alloc ? size + 1 : alloc;
+    for(i = size >= 3 ? size - 1 : 1; i <= limit; i++) {
+        ret = flb_msgpack_length((unsigned char*)data, i);
+        if(i < size) {
+            TEST_CHECK_(ret == 0, "check-size(%s) size=%d  i=%d limit=%d alloc=%d  ::: should be 0 => %d", label, size, i, limit, alloc, ret);
+        } else {
+            TEST_CHECK_(ret == size, "check-size(%s) size=%d  i=%d  limit=%d alloc=%d  ::: ret should be size => %d", label, size, i,  limit, alloc, ret);
+        }
+    }
+    msgpack_sbuffer_clear(sbuf);
+}
+
+void add_string(msgpack_packer *pk, char *buf) {
+    int len;
+    len = strlen(buf);
+    msgpack_pack_str(pk,len);
+    msgpack_pack_str_body(pk,buf,len);
+}
+
+static void add_long_string(msgpack_packer *pk, int len) {
+    msgpack_pack_str(pk,len);
+    while(len >  20) {
+        msgpack_pack_str_body(pk,"abcefefadfdfddfdfdfdfddfdfd",20);
+        len -= 20;
+    }
+    while(len > 0) {
+        msgpack_pack_str_body(pk,"X",1);
+        len--;
+    }
+}
+
+static void add_long_bin(msgpack_packer *pk, int len) {
+    msgpack_pack_bin(pk,len);
+    while(len >  20) {
+        msgpack_pack_bin_body(pk,"abcefefadfdfddfdfdfdfddfdfd",20);
+        len -= 20;
+    }
+    while(len > 0) {
+        msgpack_pack_bin_body(pk,"X",1);
+        len--;
+    }
+}
+
+static void add_long_ext(msgpack_packer *pk, int len, int type) {
+    msgpack_pack_ext(pk,len,type);
+    while(len >  20) {
+        msgpack_pack_ext_body(pk,"abcefefadfdfddfdfdfdfddfdfd",20);
+        len -= 20;
+    }
+    while(len > 0) {
+        msgpack_pack_ext_body(pk,"X",1);
+        len--;
+    }
+}
+
+
+static int sizes[] = {  0, 1, 2, 3, 7, 12, 15, 16, 30, 31, 32, 33,
+                        60, 61, 63, 64, 65,
+                        100,
+                        127,
+                        128,
+                        200,
+                        255,
+                        256,
+                        300,
+                        500,
+                        1000,
+                        20000,
+                        30000,
+                        80000,
+                        -1,
+};
+
+void test_msgpack_length()
+{
+    int size;
+    int i;
+    int o;
+
+    msgpack_sbuffer sbuf;
+    msgpack_packer pk;
+    char buf[100];
+    char buf2[20];
+
+    msgpack_sbuffer_init(&sbuf);
+    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+
+    /* [[[true]]] */
+    msgpack_pack_array(&pk,1);  {
+        msgpack_pack_array(&pk,1);  {
+            msgpack_pack_array(&pk,1);  {
+                msgpack_pack_true(&pk);
+            }
+        }
+    }
+    check_pk("arr[arr[arr[true]]]",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+
+
+    /* float */
+    msgpack_pack_float(&pk, 38844.3);
+    check_pk("float",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* double */
+    msgpack_pack_double(&pk, 38844.3);
+    check_pk("double",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* { "one": { "yksi":true }, "foobar": "two": { "kaksi":2, "kolme",3} }  */
+    msgpack_pack_map(&pk,3);
+    {
+        /* one: 1  */
+        add_string(&pk,"one");
+        msgpack_pack_map(&pk,1);
+        {
+            add_string(&pk,"yksi");
+            msgpack_pack_true(&pk);
+        }
+
+        /* foobar : 3.55 */
+        add_string(&pk,"foobar");
+        msgpack_pack_float(&pk, 3.55);
+
+        /* two: ... */
+        add_string(&pk,"two");
+        msgpack_pack_map(&pk,2);
+        {
+            add_string(&pk,"kaksi");
+            msgpack_pack_int(&pk, 2);
+            
+            add_string(&pk,"kolme");
+            msgpack_pack_int(&pk, 3);            
+        }
+    }
+    check_pk("{ one: { yksi => true }, foobar => 3.55, two: { kaksi: false } }",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);    
+
+    
+    
+
+    /* [ { 3333: false }, 9393939 ] */
+    msgpack_pack_array(&pk,2);
+    {
+        msgpack_pack_map(&pk,1);
+        {
+            msgpack_pack_int(&pk, 3333);
+            msgpack_pack_false(&pk);
+        }
+        msgpack_pack_int(&pk,9393939);
+    }
+    check_pk("[{3333:false},9393939]",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+
+    /* [ 9393939, { 3333: false } ] */
+    msgpack_pack_array(&pk,2);
+    {
+        msgpack_pack_int(&pk,9393939);
+        msgpack_pack_map(&pk,1);
+        {
+            msgpack_pack_int(&pk, 3333);
+            msgpack_pack_false(&pk);
+        }
+    }
+    check_pk("[9393939,{3333,false}]",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+
+    /* { true => false } */
+    msgpack_pack_map(&pk,1);
+    msgpack_pack_true(&pk);
+    msgpack_pack_false(&pk);
+    check_pk("map1{true=>false}",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+
+    /* { true : false } */
+    msgpack_pack_map(&pk,1);        
+    msgpack_pack_true(&pk);
+    msgpack_pack_false(&pk);
+    check_pk("map1{true=>false}",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+    
+
+    /* empty string */
+    
+    msgpack_pack_str(&pk,0);
+    msgpack_pack_str_body(&pk,"",0);
+    check_pk("empty string",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+
+    /* [[[true,1,2][false,3,4]]]*/
+    msgpack_pack_array(&pk,1);  {
+        msgpack_pack_array(&pk,2);  {
+            msgpack_pack_array(&pk,3);  {
+                msgpack_pack_true(&pk);
+                msgpack_pack_int(&pk,1);
+                msgpack_pack_int(&pk,2);                
+            }
+            msgpack_pack_array(&pk,3);  {
+                msgpack_pack_false(&pk);
+                msgpack_pack_int(&pk,3);
+                msgpack_pack_int(&pk,4);                
+            }
+        }
+    }
+    check_pk("arr[arr[arr[true]]]",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+    
+
+
+    /* complex */
+    msgpack_pack_array(&pk,7);
+    {
+        msgpack_pack_nil(&pk);
+        msgpack_pack_true(&pk);
+        msgpack_pack_false(&pk);
+
+        msgpack_pack_array(&pk,2);
+        {
+            msgpack_pack_map(&pk,1);
+            {
+                msgpack_pack_int(&pk, 3333);
+                msgpack_pack_false(&pk);
+            }
+            add_string(&pk,"morjens ");
+        }
+        add_string(&pk,"huuhaa");
+        msgpack_pack_array(&pk,0);
+
+        msgpack_pack_array(&pk,1);
+        {
+            add_string(&pk,"foobar");
+        }
+    }
+    check_pk("complex",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* small map */
+    msgpack_pack_map(&pk,1);
+    msgpack_pack_true(&pk);
+    msgpack_pack_false(&pk);
+    check_pk("map1{true=>false}",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    msgpack_pack_map(&pk,0);
+    check_pk("map0",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* empty array */
+    msgpack_pack_array(&pk,0);
+    check_pk("array0",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+    
+
+    /* int */
+    msgpack_pack_int(&pk, 10);
+    check_pk("int",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    for(o=0; sizes[o] >= 0; o++) {
+        size = sizes[o];
+        snprintf(buf2,19,"int(%d)", size);        
+        msgpack_pack_int(&pk, size);
+        check_pk(buf2,&sbuf);
+        msgpack_sbuffer_clear(&sbuf);
+    }
+
+    /* sort */
+    msgpack_pack_short(&pk, 0x3278);
+    check_pk("short",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* long */
+    msgpack_pack_long(&pk, 0x32781234);
+    check_pk("long",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* nil */
+    msgpack_pack_nil(&pk);
+    check_pk("nil",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* true */
+    msgpack_pack_true(&pk);
+    check_pk("true",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* false */
+    msgpack_pack_true(&pk);
+    check_pk("false",&sbuf);
+    msgpack_sbuffer_clear(&sbuf);
+
+    /* map with strings:string */
+    for(o=0; sizes[o] >= 0; o++) {
+        size = sizes[o];
+        snprintf(buf2,19,"map(%d)", size);
+        msgpack_pack_map(&pk,size);
+        for(i=0; i < size; i++) {
+            snprintf(buf,19,"key-%d", i);
+            add_string(&pk,buf);
+            snprintf(buf,19,"values-%d", i);
+            add_string(&pk,buf);
+        }
+        check_pk(buf2,&sbuf);
+        msgpack_sbuffer_clear(&sbuf);
+    }
+
+    /* array with strings */
+    for(o=0; sizes[o] >= 0; o++) {
+        size = sizes[o];
+        snprintf(buf2,19,"array(%d)", size);
+        msgpack_pack_array(&pk,size);
+        for(i=0; i < size; i++) {
+            snprintf(buf,19,"values-%d", i);
+            add_string(&pk,buf);
+        }
+        check_pk(buf2,&sbuf);
+        msgpack_sbuffer_clear(&sbuf);
+    }
+
+    /* str */    
+    for(o=0; sizes[o] >= 0; o++) {
+        size = sizes[o];
+        snprintf(buf,19,"str(%d)", size);
+        add_long_string(&pk, size);
+        check_pk(buf,&sbuf);
+        msgpack_sbuffer_clear(&sbuf);
+    }
+
+    /* bin */
+    for(o=0; sizes[o] >= 0; o++) {
+        size = sizes[o];
+        snprintf(buf,19,"bin(%d)", size);
+        add_long_bin(&pk, size);
+        check_pk(buf,&sbuf);
+        msgpack_sbuffer_clear(&sbuf);
+    }
+
+    /* ext */
+    for(o=0; sizes[o] >= 0; o++) {
+        size = sizes[o];
+        snprintf(buf,19,"ext(%d,55)", size);
+        add_long_ext(&pk, size,55);
+        check_pk(buf,&sbuf);
+        msgpack_sbuffer_clear(&sbuf);
+    }
+
+
+
+    msgpack_sbuffer_destroy(&sbuf);
+
+}
+
 TEST_LIST = {
     /* JSON maps iteration */
     { "json_pack", test_json_pack },
@@ -475,5 +842,7 @@ TEST_LIST = {
 
     /* Mixed bytes, check JSON encoding */
     { "utf8_to_json", test_utf8_to_json},
+
+    { "msgpack_length", test_msgpack_length},
     { 0 }
 };

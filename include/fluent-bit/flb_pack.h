@@ -33,6 +33,11 @@
 #define FLB_PACK_JSON_STRING       JSMN_STRING
 #define FLB_PACK_JSON_PRIMITIVE    JSMN_PRIMITIVE
 
+#define FLB_PACK_UNCOMPLETE         0
+#define FLB_PACK_BAD_DATA           -1
+#define FLB_PACK_TOO_MANY_LEVELS    -2
+
+
 struct flb_pack_state {
     int multiple;         /* support multiple jsons? */
     int tokens_count;     /* number of parsed tokens */
@@ -79,5 +84,7 @@ flb_sds_t flb_msgpack_to_gelf(flb_sds_t *s, msgpack_object *o,
 
 flb_sds_t flb_msgpack_raw_to_gelf(char *buf, size_t buf_size,
    struct flb_time *tm, struct flb_gelf_fields *fields);
+
+int flb_msgpack_length(unsigned char *buf, size_t len);
 
 #endif
