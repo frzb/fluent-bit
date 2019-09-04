@@ -62,6 +62,9 @@ struct flb_syslog {
     struct mk_list connections;
     struct mk_event_loop *evl;
     struct flb_input_instance *i_ins;
+
+    /* Tag handling */
+    char *tag_field;
 };
 
 #endif

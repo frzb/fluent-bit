@@ -23,6 +23,7 @@
 #include <fluent-bit/flb_info.h>
 #include <fluent-bit/flb_parser.h>
 #include <fluent-bit/flb_time.h>
+#include <fluent-bit/flb_sds.h>
 
 #include "syslog.h"
 #include "syslog_conn.h"
@@ -32,11 +33,90 @@ static inline void consume_bytes(char *buf, int bytes, int length)
     memmove(buf, buf + bytes, length - bytes);
 }
 
+
+static flb_sds_t get_msgpack_map_field(struct msgpack_object obj, char *fieldname) {
+    int i;
+    int klen;
+    int vlen;
+    int flen;
+    const char *key;
+    const char *val;
+    ssize_t ret;
+    msgpack_object *k;
+    msgpack_object *v;
+
+    flen = strlen(fieldname);
+    
+    for (i = 0; i < obj.via.map.size; i++) {
+        k = &obj.via.map.ptr[i].key;
+        
+        if (k->type != MSGPACK_OBJECT_BIN &&
+            k->type != MSGPACK_OBJECT_STR) {
+            continue;
+        }
+        
+        if (k->type == MSGPACK_OBJECT_STR) {
+            key  = k->via.str.ptr;
+            klen = k->via.str.size;
+        }
+        else {
+            key = k->via.bin.ptr;
+            klen = k->via.bin.size;
+        }
+
+        if(flen == klen && strncmp(key, fieldname, klen) == 0) {
+
+            v = &obj.via.map.ptr[i].val;
+
+            if (v->type == MSGPACK_OBJECT_STR) {
+                val  = v->via.str.ptr;
+                vlen = v->via.str.size;
+            } else if(v->type == MSGPACK_OBJECT_BIN) {
+                val  = v->via.bin.ptr;
+                vlen = v->via.bin.size;
+            } else {
+                return NULL;
+            }
+            return flb_sds_create_len(val, vlen);
+        }
+    }
+    return NULL;
+}
+
+
+static flb_sds_t get_raw_msgpack_map_field(char *data, int bytes, char *fieldname) {
+    msgpack_unpacked result;
+    msgpack_object root;
+    size_t off = 0;
+    flb_sds_t value = NULL;
+    msgpack_unpacked_init(&result);
+    if(msgpack_unpack_next(&result, data, bytes, &off) == MSGPACK_UNPACK_SUCCESS) {
+        root = result.data;
+        if (root.type == MSGPACK_OBJECT_MAP) {
+            value =  get_msgpack_map_field(root, fieldname);
+        }
+    }
+    msgpack_unpacked_destroy(&result);
+    return value;
+}
+
+
 static inline int pack_line(struct flb_syslog *ctx,
                             struct flb_time *time, char *data, size_t data_size)
 {
     msgpack_packer mp_pck;
     msgpack_sbuffer mp_sbuf;
+    char *tag = NULL;
+    int tag_len = 0;
+    flb_sds_t tag_buf = NULL;
+
+    if(ctx->tag_field) {
+        tag_buf = get_raw_msgpack_map_field(data, data_size, ctx->tag_field);
+        if(tag_buf != NULL) {
+            tag = tag_buf;
+            tag_len = flb_sds_len(tag_buf);
+        }
+    }
 
     /* Initialize local msgpack buffer */
     msgpack_sbuffer_init(&mp_sbuf);
@@ -46,8 +126,12 @@ static inline int pack_line(struct flb_syslog *ctx,
     flb_time_append_to_msgpack(time, &mp_pck, 0);
     msgpack_sbuffer_write(&mp_sbuf, data, data_size);
 
-    flb_input_chunk_append_raw(ctx->i_ins, NULL, 0, mp_sbuf.data, mp_sbuf.size);
+    flb_input_chunk_append_raw(ctx->i_ins, tag, tag_len, mp_sbuf.data, mp_sbuf.size);
     msgpack_sbuffer_destroy(&mp_sbuf);
+
+    if(tag_buf) {
+        flb_sds_destroy(tag_buf);
+    }
 
     return 0;
 }

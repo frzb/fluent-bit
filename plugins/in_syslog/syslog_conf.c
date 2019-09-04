@@ -138,6 +138,11 @@ struct flb_syslog *syslog_conf_create(struct flb_input_instance *i_ins,
         }
     }
 
+    tmp = flb_input_get_property("tag_field", config);
+    if(tmp) {
+        ctx->tag_field = flb_strdup(tmp);
+    }
+
     if (!ctx->parser) {
         flb_error("[in_syslog] parser not set");
         syslog_conf_destroy(ctx);
@@ -152,6 +157,9 @@ int syslog_conf_destroy(struct flb_syslog *ctx)
     if (ctx->buffer_data) {
         flb_free(ctx->buffer_data);
         ctx->buffer_data = NULL;
+    }
+    if(ctx->tag_field) {
+        flb_free(ctx->tag_field);
     }
     syslog_server_destroy(ctx);
     flb_free(ctx);
