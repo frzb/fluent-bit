@@ -1,5 +1,14 @@
 # ![logo](fluentbit_logo.png)
 
+
+## Bluebike forked version
+
+This version contains few patches that are not (yet) in main fluentd/fluent-bit
+
+* flb_iconv : charset conversion in input
+* mysql_quoted : parser decoder for mysql/mariadb encoded strings
+
+
 Travis CI:
 [![Build Status](https://travis-ci.org/fluent/fluent-bit.svg?branch=master)](https://travis-ci.org/fluent/fluent-bit)
 
