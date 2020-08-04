@@ -196,6 +196,10 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
     msgpack_sbuffer *out_sbuf;
     msgpack_packer *out_pck;
     struct flb_tail_config *ctx = file->config;
+#ifdef FLB_HAVE_UTF8_ENCODER
+    char *decoded;
+    size_t decoded_len;
+#endif
 
     /* Create a temporary msgpack buffer */
     msgpack_sbuffer_init(&mp_sbuf);
@@ -237,6 +241,20 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
         line = data;
         line_len = len - crlf;
         repl_line = NULL;
+
+
+#ifdef FLB_HAVE_UTF8_ENCODER
+        decoded = NULL;
+        if(ctx->encoding) {
+            ret = flb_encoding_decode(ctx->encoding, line, line_len, &decoded, &decoded_len);
+            if (ret != FLB_ENCODING_SUCCESS) {
+                flb_plg_error(ctx->ins, "encoding failed '%.*s'", line_len, line);
+                goto go_next;
+            }
+            line = decoded;
+            line_len  = decoded_len;
+        }
+#endif
 
         if (ctx->docker_mode) {
             ret = flb_tail_dmode_process_content(now, line, line_len,
@@ -288,7 +306,7 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
                 /* Parser failed, pack raw text */
                 flb_time_get(&out_time);
                 flb_tail_file_pack_line(out_sbuf, out_pck, &out_time,
-                                        data, len, file);
+                                        line, len, file);
             }
         }
         else if (ctx->multiline == FLB_TRUE) {
@@ -331,6 +349,12 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
         processed_bytes += len + 1;
         file->parsed = 0;
         lines++;
+#ifdef FLB_HAVE_UTF8_ENCODER
+        if(decoded) {
+            flb_free(decoded);
+            decoded = NULL;
+        }
+#endif
     }
     file->parsed = file->buf_len;
     *bytes = processed_bytes;
@@ -343,6 +367,7 @@ static int process_content(struct flb_tail_file *file, off_t *bytes)
                                out_sbuf->size);
 
     msgpack_sbuffer_destroy(out_sbuf);
+
     return lines;
 }
 
