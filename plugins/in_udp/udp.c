@@ -57,17 +57,17 @@ static int in_udp_collect_udp(struct flb_input_instance *i_ins,
     if (bytes > 0) {
         ctx->buffer_data[bytes] = '\0';
         ctx->buffer_len = bytes;
-        if(ctx->multi_line) {
+        if (ctx->multi_line) {
             line = ctx->buffer_data;
             endp = ctx->buffer_data + bytes;
-            while((nl = strchr(line,'\n')) != NULL) {
+            while ((nl = strchr(line,'\n')) != NULL) {
                 *nl = 0;
-                if((nl - line) > 0) {
+                if ((nl - line) > 0) {
                     udp_prot_process_udp(line, nl - line, ctx);
                 }
                 line = nl + 1;
             }
-            if(line < endp) {
+            if (line < endp) {
                 udp_prot_process_udp(line, endp - line, ctx);
             }
         } else {

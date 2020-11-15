@@ -33,11 +33,11 @@ static size_t rtrimlen(char *buf,  size_t size)
 {
     uint8_t *b = (uint8_t*) buf;
     uint8_t *p;
-    if(size <= 0) {
+    if (size <= 0) {
         return size;
     }
-    for(p = (uint8_t*) b + (size - 1); p >= b; p--) {
-        if(*p > 32) {
+    for (p = (uint8_t*) b + (size - 1); p >= b; p--) {
+        if (*p > 32) {
             return p - b + 1;
         }
     }
@@ -121,11 +121,11 @@ int udp_prot_process_unparsed(char *buf, size_t size, struct flb_udp *ctx)
 
 int udp_prot_process_udp(char *buf, size_t size, struct flb_udp *ctx)
 {
-    if(ctx->rtrim) {
+    if (ctx->rtrim) {
         size = rtrimlen(buf, size);
     }
 
-    if(ctx->parser) {
+    if (ctx->parser) {
         udp_prot_process_parsed(buf, size, ctx);
     } else {
         udp_prot_process_unparsed(buf, size, ctx);

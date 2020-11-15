@@ -128,11 +128,11 @@ int udp_server_destroy(struct flb_udp *ctx)
             flb_free(ctx->unix_path);
         }
     }
-    if(ctx->port) {
+    if (ctx->port) {
         flb_free(ctx->port);
         ctx->port = NULL;
     }
-    if(ctx->server_fd >= 0) {
+    if (ctx->server_fd >= 0) {
         close(ctx->server_fd);
         ctx->server_fd = -1;
     }

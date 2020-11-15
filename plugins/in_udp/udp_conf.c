@@ -139,13 +139,13 @@ struct flb_udp *udp_conf_create(struct flb_input_instance *ins,
 
     /* multiline */
     tmp = flb_input_get_property("multi_line", ins);
-    if(tmp) {
+    if (tmp) {
         ctx->multi_line = flb_utils_bool(tmp);
     }
 
     /* rtrim  (right trim input) */
     tmp = flb_input_get_property("rtrim", ins);
-    if(tmp) {
+    if (tmp) {
         ctx->rtrim = flb_utils_bool(tmp);
     }
 
